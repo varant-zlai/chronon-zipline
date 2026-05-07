@@ -523,17 +523,19 @@ class TestHubRunner:
         from gen_thrift.api.ttypes import Conf
 
         mock_get_current_branch.return_value = "test-branch"
-        mock_build_hashmap.return_value = {}
 
-        # Mock compute_and_upload_diffs to return a conf without schedules
+        # Mock build_local_repo_hashmap to return a conf without schedules
         conf_without_schedules = Conf(
             name="test_team.join_without_schedules",
             localPath="/path/to/conf",
             hash="hash1",
         )
-        mock_compute_diffs.return_value = {
+        mock_build_hashmap.return_value = {
             "test_team.join_without_schedules": conf_without_schedules,
         }
+
+        # Mock compute_and_upload_diffs (still called to upload any changes)
+        mock_compute_diffs.return_value = {}
 
         # Mock get_schedule_modes to return SCHEDULE_NONE_STR for both schedules
         mock_get_schedule_modes.return_value = ScheduleModes(

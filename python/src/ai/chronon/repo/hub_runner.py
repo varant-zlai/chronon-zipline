@@ -372,7 +372,7 @@ def redeploy_streaming(repo, confs, hub_url=None, use_auth=True, format: Format 
 def submit_schedule_all(
     repo, cloud, customer_id, hub_url=None, use_auth=True, format: Format = Format.TEXT
 ):
-    """Deploy schedules for all changed confs that have schedules defined."""
+    """Deploy schedules for all confs that have schedules defined."""
     zipline_hub = _get_zipline_hub(
         hub_url,
         get_hub_conf_from_metadata_conf(
@@ -391,18 +391,19 @@ def submit_schedule_all(
     branch = get_current_branch()
 
     with status_spinner("Syncing confs with Hub...", format=format):
-        diff_confs = hub_uploader.compute_and_upload_diffs(
+        # Upload any changed confs to Hub
+        hub_uploader.compute_and_upload_diffs(
             branch,
             zipline_hub=zipline_hub,
             local_repo_confs=conf_name_to_obj_dict,
             format=format,
         )
 
-    # Collect confs with schedules
+    # Collect confs with schedules (from ALL confs, not just changed ones)
     confs_with_schedules = []
     skipped_confs = []
 
-    for name, conf in diff_confs.items():
+    for name, conf in conf_name_to_obj_dict.items():
         try:
             schedule_modes = get_schedule_modes(conf.localPath)
 
@@ -433,8 +434,8 @@ def submit_schedule_all(
 
     if not confs_with_schedules:
         print_info(
-            f"No changed confs with schedules found. "
-            f"{len(skipped_confs)} conf(s) changed but have no schedules defined.",
+            f"No confs with schedules found. "
+            f"{len(skipped_confs)} conf(s) have no schedules defined.",
             format=format,
         )
         return
