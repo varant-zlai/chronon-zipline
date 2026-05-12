@@ -110,8 +110,6 @@ before running the regular group by backfills if necessary.
 
 More details and scenarios about bootstrap can be found in Bootstrap documentation.
 
-##
-
 ## Computation examples
 
 The following explain the backfill accuracy for each possible combination of left-side source type and right-side/GroupBy source type.
