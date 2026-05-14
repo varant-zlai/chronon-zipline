@@ -1,5 +1,5 @@
 from group_bys.gcp import dim_listings, dim_listings_with_mutations, dim_merchants, user_activities
-from staging_queries.gcp import exports
+from staging_queries.gcp.exports import user_activities as exports_user_activities
 
 from ai.chronon.types import Derivation, EventSource, GroupBy, Join, JoinPart, Query, selects, Aggregation, Operation, \
     Window, TimeUnit
@@ -18,7 +18,7 @@ Right parts:
 # Left side: Raw user activity events from PubSub export
 source = EventSource(
     # This will be the BigQuery table that receives the PubSub data
-    table=exports.user_activities.table,
+    table=exports_user_activities.table,
     query=Query(
         selects=selects(
             user_id="user_id",

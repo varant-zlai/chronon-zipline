@@ -8,6 +8,7 @@ import ai.chronon.api.secrets.SecretResolver
 import ai.chronon.online.Api
 import ai.chronon.online.fetcher.{FetchContext, MetadataStore}
 import ai.chronon.planner.{Node, NodeContent}
+import ai.chronon.spark.submission.NodeConfReader
 import org.rogach.scallop.ScallopConf
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -159,7 +160,7 @@ object KVUploadNodeRunner {
 
   def runFromArgs(confPath: String, endDs: String, onlineClass: String, props: Map[String, String]): Try[Unit] = {
     Try {
-      val node = ThriftJsonCodec.fromJsonFile[Node](confPath, check = false)
+      val node = NodeConfReader.read(confPath)
       val metadata = node.metaData
 
       // Merge Node's common conf into API props so config like upload location flows through.

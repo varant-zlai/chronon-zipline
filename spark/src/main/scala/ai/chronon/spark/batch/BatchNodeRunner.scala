@@ -12,7 +12,7 @@ import ai.chronon.spark.batch.iceberg.IcebergPartitionStatsExtractor
 import ai.chronon.spark.batch.{StagingQuery => StagingQueryUtil}
 import ai.chronon.spark.catalog.TableUtils
 import ai.chronon.spark.join.UnionJoin
-import ai.chronon.spark.submission.SparkSessionBuilder
+import ai.chronon.spark.submission.{NodeConfReader, SparkSessionBuilder}
 import ai.chronon.spark.utils.SemanticUtils
 import ai.chronon.spark.{GroupBy, GroupByUpload, Join, ModelTransformsJob}
 import org.rogach.scallop.{ScallopConf, ScallopOption}
@@ -696,7 +696,7 @@ object BatchNodeRunner {
     val batchArgs = new BatchNodeRunnerArgs(args)
     val resolvedEnv = SecretResolver.resolveVaultUris(sys.env.toMap)
     val driverSecrets = resolvedEnv -- sys.env.keySet
-    val node = ThriftJsonCodec.fromJsonFile[Node](batchArgs.confPath(), check = false)
+    val node = NodeConfReader.read(batchArgs.confPath())
     val tableUtils = TableUtils(SparkSessionBuilder.build(s"batch-node-runner-${node.metaData.name}"))
     val api = instantiateApi(batchArgs.onlineClass(), batchArgs.apiProps ++ driverSecrets)
     val runner = new BatchNodeRunner(node, tableUtils, api)

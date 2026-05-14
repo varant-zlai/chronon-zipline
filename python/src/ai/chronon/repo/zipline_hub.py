@@ -161,7 +161,7 @@ class ZiplineHub:
 
             print_info("Token acquired.", format=self.format)
         except (ClientAuthenticationError, CredentialUnavailableError) as e:
-            print_error(
+            print_warning(
                 f"Could not acquire token. Make sure you are logged in via 'az login'. Details: {e}",
                 format=self.format,
             )
@@ -643,6 +643,7 @@ class ZiplineHub:
         start=None,
         end=None,
         skip_long_running=False,
+        concurrency=None,
     ):
         url = f"{self.base_url}/workflow/v2/start"
         end_dt = end.strftime("%Y-%m-%d") if end else date.today().strftime("%Y-%m-%d")
@@ -661,6 +662,8 @@ class ZiplineHub:
             "end": end_dt,
             "skipLongRunningNodes": skip_long_running,
         }
+        if concurrency is not None:
+            workflow_request["workflowConcurrency"] = concurrency
         try:
             response = requests.post(
                 url, json=workflow_request, headers=self.additional_headers(self.base_url)

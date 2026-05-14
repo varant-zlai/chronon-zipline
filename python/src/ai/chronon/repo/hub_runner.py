@@ -308,6 +308,16 @@ def end_ds_option(func):
     return wrapper
 
 
+def workflow_concurrency_option(func):
+    return click.option(
+        "--concurrency",
+        "workflow_concurrency",
+        type=click.IntRange(min=1),
+        default=None,
+        help="Max workflow steps Hub may allocate concurrently for this workflow.",
+    )(func)
+
+
 def _get_zipline_hub(
     hub_url: Optional[str],
     hub_conf: HubConfig,
@@ -543,6 +553,7 @@ def submit_workflow(
     hub_url=None,
     use_auth=True,
     format: Format = Format.TEXT,
+    workflow_concurrency=None,
 ):
     hub_conf = get_hub_conf(conf, root_dir=repo)
     zipline_hub = _get_zipline_hub(hub_url, hub_conf, use_auth, format)
@@ -572,6 +583,7 @@ def submit_workflow(
             end=end_ds,
             conf_hash=conf_name_to_hash_dict[conf_name].hash,
             skip_long_running=False,
+            concurrency=workflow_concurrency,
         )
 
     workflow_id = response_json.get("workflowId", "N/A")
@@ -582,6 +594,8 @@ def submit_workflow(
     print_key_value("🆔 Workflow ID", workflow_id, format=format)
     print_key_value("📦 Conf", conf_name, format=format)
     print_key_value("⚙️  Mode", mode, format=format)
+    if workflow_concurrency is not None:
+        print_key_value("Concurrency", workflow_concurrency, format=format)
     print_wf_url(
         conf=conf,
         conf_name=conf_name,
@@ -646,6 +660,7 @@ def submit_schedule(
 @common_options
 @start_ds_option
 @end_ds_option
+@workflow_concurrency_option
 @handle_conf_not_found(log_error=True, callback=print_possible_confs)
 @handle_compile
 @jsonify_exceptions_if_json_format
@@ -658,6 +673,7 @@ def backfill(
     force,
     start_ds,
     end_ds,
+    workflow_concurrency,
     assume_yes,
     skip_compile,
 ):
@@ -674,6 +690,7 @@ def backfill(
         hub_url=hub_url,
         use_auth=use_auth,
         format=format,
+        workflow_concurrency=workflow_concurrency,
     )
 
 
@@ -875,8 +892,10 @@ def clear_downstream(conf, repo, hub_url, use_auth, format, start_ds, end_ds, as
     print_key_value("Affected confs", len(affected_confs), format=format)
     click.echo()
     for conf_result in affected_confs:
+        mode = conf_result.get("mode", "backfill")
+        mode_label = "batch" if mode == "backfill" else "online"
         print_key_value(
-            f"  {conf_result.get('confName', 'unknown')}",
+            f"  {conf_result.get('confName', 'unknown')} ({mode_label})",
             f"{conf_result.get('startPartition', '')} to {conf_result.get('endPartition', '')}",
             format=format,
         )
@@ -896,8 +915,19 @@ def clear_downstream(conf, repo, hub_url, use_auth, format, start_ds, end_ds, as
 
     print_success(f"Cleared {len(affected_confs)} confs", format=format)
     click.echo()
-    click.echo("To recompute, run backfill for each affected conf:")
-    click.echo("  zipline hub backfill <compiled_conf_path> --start-ds <start> --end-ds <end>")
+
+    backfill_confs = [c for c in affected_confs if c.get("mode", "backfill") == "backfill"]
+    deploy_confs = [c for c in affected_confs if c.get("mode") == "deploy"]
+
+    if backfill_confs:
+        click.echo("To recompute batch data, run backfill for each affected conf:")
+        for c in backfill_confs:
+            click.echo(f"  zipline hub backfill {c['confName']} --start-ds {c['startPartition']} --end-ds {c['endPartition']}")
+
+    if deploy_confs:
+        click.echo("To fix online data, run adhoc upload for each deploy conf:")
+        for c in deploy_confs:
+            click.echo(f"  zipline hub run-adhoc {c['confName']}")
 
 
 def load_json(file_path):
@@ -967,9 +997,22 @@ def fetch(conf, repo, hub_url, use_auth, format, force, fetcher_url, schema, key
     else:
         endpoint = "/v1/fetch/{conf_type}".format(conf_type=conf_type[:-1])
     if schema:
-        if conf_type != "joins":
-            raise ValueError("Schema fetch is only supported for joins")
-        endpoint = f"/v1/join/{target}/schema"
+        if conf_type == "joins":
+            endpoint = f"/v1/join/{target}/schema"
+        elif conf_type == "groupbys":
+            endpoint = f"/v1/groupby/{target}/schema"
+        else:
+            raise ValueError("Schema fetch is only supported for joins and groupBys")
+    online_condition = "- The join needs to be online."
+    if conf_type == "groupbys":
+        online_condition = "- The GroupBy needs to be online."
+        if schema:
+            online_condition = (
+                "- The GroupBy must be online=True and uploaded online. "
+                "For offline table schema, use the Iceberg catalog schema via eval."
+            )
+    elif conf_type != "joins":
+        online_condition = "- The target needs to be available from the fetcher."
     headers = {"Content-Type": "application/json"}
     try:
         if schema:
@@ -990,7 +1033,7 @@ def fetch(conf, repo, hub_url, use_auth, format, force, fetcher_url, schema, key
         Request failed for url: {url}
         The conditions for a successful fetch are:
         - Metadata has been uploaded to the KV Store (run-adhoc command or schedule command)
-        - The join needs to be online.
+        {online_condition}
         Please verify the above conditions and try again.
         Error: {e}
         """

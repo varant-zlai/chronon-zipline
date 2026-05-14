@@ -3,7 +3,7 @@ import glob
 import importlib
 import os
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from ai.chronon import airflow_helpers
 from ai.chronon.cli.compile import parse_teams, serializer
@@ -23,6 +23,12 @@ def from_folder(target_classes: List[type], input_dir: str, compile_context: Com
     """
 
     python_files = glob.glob(os.path.join(input_dir, "**/*.py"), recursive=True)
+    # Visit shallowest paths first, then alphabetical within depth. Combined
+    # with the dependency-ordered CONFIG_INFOS in CompileContext, this keeps
+    # "first sighting" == "canonical file" for the id()-based dedup in
+    # from_file: a utility module like joins/util.py is processed before
+    # joins/team/data.py that imports from it.
+    python_files.sort(key=lambda p: (p.count(os.sep), p))
 
     # Results keyed by class type
     results = {cls: [] for cls in target_classes}
@@ -30,7 +36,9 @@ def from_folder(target_classes: List[type], input_dir: str, compile_context: Com
     for f in python_files:
         try:
             # Get objects of all target types from this file
-            multi_type_results = from_file(f, target_classes, input_dir)
+            multi_type_results = from_file(
+                f, target_classes, input_dir, compile_context.seen_obj_ids
+            )
 
             # Process each type's results
             for target_cls, objects_dict in multi_type_results.items():
@@ -82,15 +90,37 @@ def from_folder(target_classes: List[type], input_dir: str, compile_context: Com
     return results
 
 
-def from_file(file_path: str, target_classes: List[type], input_dir: str) -> Dict[type, Dict[str, Any]]:
+def from_file(
+    file_path: str,
+    target_classes: List[type],
+    input_dir: str,
+    seen_obj_ids: Set[int],
+) -> Dict[type, Dict[str, Any]]:
     """
     Extract config objects from a Python file.
     Supports extracting multiple config types from a single file.
+
+    `seen_obj_ids` carries object identities across all files in the compile
+    run. The first file we encounter an object in becomes its canonical
+    location; any later file that imports the same object will see its id()
+    already in the set and skip it. This is what prevents duplicate-config
+    errors when a Join file imports a GroupBy — both files have the GroupBy
+    in their `module.__dict__`, but only the file scanned first claims it.
+
+    Scan order is enforced by:
+      - `CONFIG_INFOS` in compile_context — dependency-first (group_bys
+        before joins, etc.), so an imported config's home directory is
+        visited before any directory that might import from it.
+      - `from_folder` — shallowest path first, alphabetical within depth,
+        so utility modules win over the team-specific files that import
+        from them.
 
     Args:
         file_path: Path to the Python file to parse
         target_classes: List of config classes to search for (e.g., [GroupBy, Join])
         input_dir: Root directory for the config type
+        seen_obj_ids: Mutable set of id()s for objects already claimed by an
+            earlier file in this compile run. Updated in place.
 
     Returns:
         Nested dict: {GroupBy: {name: obj}, Join: {name: obj}, ...}
@@ -130,6 +160,15 @@ def from_file(file_path: str, target_classes: List[type], input_dir: str) -> Dic
         # Check if object is an instance of any target class
         for target_cls in target_classes:
             if isinstance(obj, target_cls):
+                # Identity dedup: an imported config object appears in
+                # `module.__dict__` of every file that imports it. Only the
+                # first file to see it (via the dependency-ordered scan)
+                # should compile it; later sightings are imports and get
+                # skipped here.
+                if id(obj) in seen_obj_ids:
+                    break
+                seen_obj_ids.add(id(obj))
+
                 copied_obj = copy.deepcopy(obj)
 
                 name = f"{mod_path}.{var_name}"

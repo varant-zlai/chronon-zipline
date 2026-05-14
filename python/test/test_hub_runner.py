@@ -78,6 +78,7 @@ class TestHubRunner:
             '--no-use-auth',
             '--start-ds', '2024-01-15',
             '--end-ds', '2024-02-15',
+            '--concurrency', '250',
         ])
 
         assert result.exit_code == 0
@@ -96,6 +97,7 @@ class TestHubRunner:
         assert json_payload['start'] == "2024-01-15"
         assert json_payload['end'] == "2024-02-15"
         assert json_payload['branch'] == "test-branch"
+        assert json_payload['workflowConcurrency'] == 250
 
         # Check headers
         headers = call_args[1]['headers']
@@ -763,7 +765,7 @@ class TestHubRunner:
                  "startPartition": "2024-01-01", "endPartition": "2024-01-05"},
             ],
             "affectedConfs": [
-                {"confName": "aws.my_conf.v1", "startPartition": "2024-01-01", "endPartition": "2024-01-05"},
+                {"confName": "aws.my_conf.v1", "startPartition": "2024-01-01", "endPartition": "2024-01-05", "mode": "backfill"},
             ],
             "totalNodesCleared": 1,
             "message": "Preview: 1 confs would be cleared",
@@ -795,9 +797,9 @@ class TestHubRunner:
 
         assert result.exit_code == 0
         plain_output = _plain(result.output)
-        assert "aws.my_conf.v1" in plain_output
+        assert "aws.my_conf.v1 (batch)" in plain_output
         assert "Cleared 1 confs" in plain_output
-        assert "zipline hub backfill" in plain_output
+        assert "zipline hub backfill aws.my_conf.v1 --start-ds 2024-01-01 --end-ds 2024-01-05" in plain_output
 
         assert mock_post.call_count == 2
 

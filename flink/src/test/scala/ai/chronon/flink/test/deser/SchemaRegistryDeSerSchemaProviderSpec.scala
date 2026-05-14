@@ -2,7 +2,7 @@ package ai.chronon.flink.test.deser
 
 import ai.chronon.api.{IntType, StringType, StructField}
 import ai.chronon.flink.deser.SchemaRegistrySerDe
-import ai.chronon.flink.deser.SchemaRegistrySerDe.{Proto3DefaultAsNullKey, RegistryHostKey, SchemaRegistryWireFormat}
+import ai.chronon.flink.deser.SchemaRegistrySerDe._
 import ai.chronon.online.TopicInfo
 import ai.chronon.online.serde.AvroCodec
 import com.google.protobuf.DynamicMessage
@@ -16,7 +16,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import java.nio.ByteBuffer
 import scala.jdk.CollectionConverters._
 
-class MockSchemaRegistrySerDe(topicInfo: TopicInfo, mockSchemaRegistryClient: MockSchemaRegistryClient)
+class MockSchemaRegistrySerDe(topicInfo: TopicInfo,
+                             mockSchemaRegistryClient: MockSchemaRegistryClient)
     extends SchemaRegistrySerDe(topicInfo) {
   override def buildSchemaRegistryClient(schemeString: String,
                                          registryHost: String,
@@ -258,6 +259,64 @@ class SchemaRegistrySerDeSpec extends AnyFlatSpec {
     assert(mutation.after != null)
     assert(mutation.after(0) == "test")
     assert(mutation.after(1) == null)
+  }
+
+  "resolveRegistryAuthConfig" should "return empty map when no basic.auth.credentials.source is set" in {
+    val params = Map(RegistryHostKey -> "localhost")
+    val result = SchemaRegistrySerDe.resolveRegistryAuthConfig(params, _ => None)
+    assert(result.isEmpty)
+  }
+
+  it should "inject basic.auth.user.info from env var when credentials source is set but user info is not" in {
+    val params = Map(
+      RegistryHostKey -> "localhost",
+      BasicAuthCredentialsSourceKey -> "USER_INFO"
+    )
+    val result = SchemaRegistrySerDe.resolveRegistryAuthConfig(params, {
+      case BasicAuthUserInfoEnvVar => Some("my-key:my-secret")
+      case _                      => None
+    })
+    assert(result(BasicAuthCredentialsSourceKey) == "USER_INFO")
+    assert(result(BasicAuthUserInfoKey) == "my-key:my-secret")
+  }
+
+  it should "use explicit basic.auth.user.info from params over env var" in {
+    val params = Map(
+      RegistryHostKey -> "localhost",
+      BasicAuthCredentialsSourceKey -> "USER_INFO",
+      BasicAuthUserInfoKey -> "explicit-key:explicit-secret"
+    )
+    val result = SchemaRegistrySerDe.resolveRegistryAuthConfig(params, _ => Some("should-not-be-used"))
+    assert(result(BasicAuthUserInfoKey) == "explicit-key:explicit-secret")
+  }
+
+  it should "return only credentials source when env var is missing and user info is not in params" in {
+    val params = Map(
+      RegistryHostKey -> "localhost",
+      BasicAuthCredentialsSourceKey -> "USER_INFO"
+    )
+    val result = SchemaRegistrySerDe.resolveRegistryAuthConfig(params, _ => None)
+    assert(result(BasicAuthCredentialsSourceKey) == "USER_INFO")
+    assert(!result.contains(BasicAuthUserInfoKey))
+  }
+
+  it should "return empty map when credentials source is empty string" in {
+    val params = Map(
+      RegistryHostKey -> "localhost",
+      BasicAuthCredentialsSourceKey -> "  "
+    )
+    val result = SchemaRegistrySerDe.resolveRegistryAuthConfig(params, _ => Some("my-key:my-secret"))
+    assert(result.isEmpty)
+  }
+
+  it should "skip env var when it is blank" in {
+    val params = Map(
+      RegistryHostKey -> "localhost",
+      BasicAuthCredentialsSourceKey -> "USER_INFO"
+    )
+    val result = SchemaRegistrySerDe.resolveRegistryAuthConfig(params, _ => Some("  "))
+    assert(result(BasicAuthCredentialsSourceKey) == "USER_INFO")
+    assert(!result.contains(BasicAuthUserInfoKey))
   }
 
   // ============== Schema Evolution Bug Tests ==============

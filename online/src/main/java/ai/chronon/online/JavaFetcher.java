@@ -224,6 +224,11 @@ public class JavaFetcher {
     return JTry.fromScala(scalaResponse).map(JavaJoinSchemaResponse::new);
   }
 
+  public JTry<JavaGroupBySchemaResponse> fetchGroupBySchema(String groupByName) {
+    Try<Fetcher.GroupBySchemaResponse> scalaResponse = this.fetcher.fetchGroupBySchema(groupByName);
+    return JTry.fromScala(scalaResponse).map(JavaGroupBySchemaResponse::new);
+  }
+
   private void instrument(List<String> requestNames, boolean isGroupBy, String metricName, Long startTs) {
     long endTs = System.currentTimeMillis();
     for (String s : requestNames) {

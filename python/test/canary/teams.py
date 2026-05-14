@@ -23,6 +23,8 @@ default = Team(
             "CUSTOMER_ID": "dev",
             "FRONTEND_URL": "http://localhost:3000",
             "HUB_URL": "http://localhost:3903",
+            "EVAL_URL": "http://localhost:3904",
+            "FETCHER_URL": "http://localhost:9000",
         },
     ),
     canaryEnv=EnvironmentVariables(
@@ -97,6 +99,14 @@ gcp = Team(
             "spark.driver.cores": "1",
             "spark.executor.memory": "512m",
             "spark.executor.cores": "1",
+
+            # Chronon OTel metrics. Default off + HTTP to localhost:4318. The canary cluster's
+            # Ops Agent listens on the gRPC port (4317), not 4318, so steer the SDK accordingly.
+            "spark.driver.extraJavaOptions": " ".join([
+                "-Dai.chronon.metrics.enabled=true",
+                "-Dai.chronon.metrics.reader=grpc",
+                "-Dai.chronon.metrics.exporter.url=http://localhost:4317",
+            ]),
         },
         modeConfigs={
         }
