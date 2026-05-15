@@ -154,14 +154,18 @@ class CrucibleSubmitter(
 
   override def close(): Unit = client.close()
 
+  // Spark UI URL: the gateway translates this Crucible jobId to Spark's
+  // driver-assigned application id at click time and 302s to SHS. The
+  // submitter stays synchronous — no polling, no cache — symmetric with the
+  // other JobSubmitter implementations.
   override def getJobUrl(jobId: String): Option[String] =
     Some(s"${baseUrl.stripSuffix("/")}/api/v1/namespaces/$namespace/jobs/$jobId")
 
   override def getSparkUrl(jobId: String): Option[String] =
-    Some(s"${baseUrl.stripSuffix("/")}/api/v1/namespaces/$namespace/jobs/$jobId/ui")
+    Some(s"${baseUrl.stripSuffix("/")}/spark/$namespace/$jobId/")
 
   override def getFlinkUrl(jobId: String): Option[String] =
-    Some(s"${baseUrl.stripSuffix("/")}/api/v1/namespaces/$namespace/jobs/$jobId/ui")
+    Some(s"${baseUrl.stripSuffix("/")}/jobs/$namespace/$jobId/ui")
 
   override def isClusterCreateNeeded(isLongRunning: Boolean): Boolean = false
 
